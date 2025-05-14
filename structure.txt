@@ -1,0 +1,18 @@
+.
+├── app
+│   ├── api
+│   │   ├── __init__.py
+│   │   ├── routes.py
+│   │   └── schemas.py
+│   ├── core
+│   │   ├── __init__.py
+│   │   └── qdrant_handler.py
+│   └── main.py
+├── .dockerignore
+├── .gitignore
+├── dev.ipynb
+├── docker-compose.yml
+├── Dockerfile
+├── README.md
+├── requirements.txt
+└── structure.txt
