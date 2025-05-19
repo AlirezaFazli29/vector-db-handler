@@ -104,6 +104,38 @@ class QdrantHandler:
             points = [point]
         )
 
+    def upsert_list_of_vectors(
+            self,
+            user_id: str,
+            vectors: List[List],
+            metadatas: List[Dict],
+    ) -> None:
+        """
+        Bulk-upsert vectors (and their payloads) into the user's collection.
+
+        Args:
+            user_id (str): The user's unique identifier.
+
+            vectors (List[List]): List of vector embeddings to store.  
+
+            metadatas (List[Dict]): List of payload dictionaries that accompany each vector
+
+        Raises:
+            ValueError: If the lengths of ``vectors`` and ``metadatas`` differ.
+        """
+        collection_name = self.__collection_name(user_id)
+        points = [
+            PointStruct(
+                id = str(uuid.uuid4()),
+                vector = vectors[i],
+                payload = metadatas[i]
+            ) for i in range(len(vectors))
+        ]
+        self.client.upsert(
+            collection_name = collection_name,
+            points = points,
+        )
+
     def delete_doc(
             self,
             user_id: str,
