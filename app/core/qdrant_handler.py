@@ -385,3 +385,14 @@ class QdrantHandler:
             with_vectors = with_vectors,
         )
         return response[0]
+    
+    def list_collections(self) -> list[str]:
+        """
+        Get the names of every collection that currently exists in Qdrant.
+
+        Returns:
+            list[str]: A list of collection names.
+        """
+        return [
+            c.name for c in self.client.get_collections().collections
+        ]
