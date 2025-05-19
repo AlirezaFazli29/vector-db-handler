@@ -206,6 +206,48 @@ class QdrantHandler:
         collection_name = self.__collection_name(user_id)
         self.client.delete_collection(collection_name)
 
+    def update_vector(
+            self,
+            user_id: str,
+            vector: List,
+            doc_id: int,
+            chunk_id: int,
+    ) -> None:
+        """
+        Update the vector of a data point identified by document ID and chunk ID in the user's collection.
+
+        Args:
+            user_id (str): The user identifier to determine the collection name.
+            vector (List): The new vector embedding to update.
+            doc_id (int): The document ID of the data point.
+            chunk_id (int): The chunk ID within the document to identify the exact data point.
+        """
+        collection_name = self.__collection_name(user_id)
+        filter_condition = Filter(
+            must=[
+                FieldCondition(key="DocId",  match=MatchValue(value=doc_id)),
+                FieldCondition(key="ChunkId", match=MatchValue(value=chunk_id)),
+            ]
+        )
+        response = self.client.scroll(
+            collection_name = collection_name,
+            scroll_filter = filter_condition,
+            limit = 1,
+            with_payload = True,
+            with_vectors = False,
+        )
+        if response[0]:
+            record = response[0][0]
+            point = PointStruct(
+                id = record.id,
+                payload = record.payload,
+                vector = vector
+            )
+            self.client.upsert(
+                collection_name = collection_name,
+                points = point
+            )
+
     def search_query(
             self,
             user_id: str,
