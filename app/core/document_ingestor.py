@@ -1,4 +1,5 @@
 import uuid
+import requests
 from typing import List, Dict
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
@@ -396,3 +397,53 @@ class QdrantHandler:
         return [
             c.name for c in self.client.get_collections().collections
         ]
+    
+
+class DocumentProcessor:
+    """
+    A processor that integrates with an embedding API and Qdrant vector database to handle text-to-vector
+    embedding and storage/retrieval operations.
+
+    This class is responsible for:
+      - Communicating with an external embedding service (e.g., to vectorize text strings or lists).
+      - Interacting with Qdrant via QdrantHandler to manage vector collections.
+      - Using a persistent HTTP session for performance optimization when calling the embedding service.
+
+    Args:
+        qdrant_host (str): Hostname or IP address of the Qdrant server.
+        qdrant_port (int): Port number where the Qdrant service is running.
+        embedding_host (str): Hostname or IP address of the embedding service.
+        embedding_port (int): Port number of the embedding service.
+    """
+    def __init__(
+            self,
+            qdrant_host: str,
+            qdrant_port: int,
+            embedding_host: str,
+            embedding_port: int,
+    ):
+        """
+        Initializes the processor by setting up the embedding service addresses,
+        initializing the Qdrant handler, and preparing a persistent HTTP session with
+        appropriate headers for JSON API interaction.
+
+        Args:
+            qdrant_host (str): Qdrant server host.
+            qdrant_port (int): Qdrant server port.
+            embedding_host (str): Embedding API server host.
+            embedding_port (int): Embedding API server port.
+        """
+        embedding_address = f"http://{embedding_host}:{embedding_port}"
+        self.embed_str_address = f"{embedding_address}/vectorizer/string/"
+        self.embed_list_address = f"{embedding_address}/vectorizer/list/"
+        self.qdrant_handler = QdrantHandler(
+            qdrant_host = qdrant_host,
+            qdrant_port = qdrant_port
+        )
+        self.session = requests.Session()
+        self.session.headers.update(
+            {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
+        )
