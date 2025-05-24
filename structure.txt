@@ -6,7 +6,8 @@
 │   │   └── schemas.py
 │   ├── core
 │   │   ├── __init__.py
-│   │   └── qdrant_handler.py
+│   │   ├── config.py
+│   │   └── document_ingestor.py
 │   └── main.py
 ├── .dockerignore
 ├── .gitignore
