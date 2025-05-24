@@ -1,6 +1,8 @@
+import json
 import uuid
+import logging
 import requests
-from typing import List, Dict
+from typing import List, Dict, Any
 from qdrant_client import QdrantClient
 from qdrant_client.models import (
     FieldCondition,
@@ -14,6 +16,9 @@ from qdrant_client.http.models import (
     ScoredPoint,
     Record,
 )
+
+
+logger = logging.getLogger(__name__)
 
 
 class QdrantHandler:
@@ -278,7 +283,7 @@ class QdrantHandler:
             )
             self.client.upsert(
                 collection_name = collection_name,
-                points = point
+                points = [point]
             )
 
     def search_query(
@@ -447,3 +452,423 @@ class DocumentProcessor:
                 "Accept": "application/json"
             }
         )
+
+    def upsert_string(
+            self,
+            user_id: str,
+            chunk: str,
+            metadata: Dict,
+    ) -> None:
+        """
+        Vectorizes a single string using the embedding service and upserts the resulting vector into Qdrant.
+
+        This method:
+          - Sends a POST request to the embedding service's string endpoint to obtain a vector representation
+            of the input text (chunk).
+          - Ensures a vector collection exists for the user (creates it if it doesn't).
+          - Upserts the vector and its associated metadata into the user's Qdrant collection.
+
+        Retries up to 5 times on failure before raising an error.
+
+        Args:
+            user_id (str): Unique identifier for the user; used to route data to the correct Qdrant collection.
+            chunk (str): A string of text to be vectorized.
+            metadata (Dict): Metadata associated with the chunk, to be stored with the vector.
+
+        Raises:
+            ValueError: If the embedding service fails to return a successful response after 5 attempts.
+        """
+        payload = {
+            "text": chunk,
+        }
+        for _ in range(5):
+            embedding_response = self.session.post(
+                url = self.embed_str_address,
+                json = payload,
+                timeout = 10,
+            )
+            if embedding_response.status_code == 200:
+                response_json = embedding_response.json()
+                vector = json.loads(response_json["vectorized text"])
+                self.qdrant_handler.ensure_user_collection(user_id)
+                self.qdrant_handler.upsert_vector(
+                    user_id = user_id,
+                    vector = vector,
+                    metadata = metadata,
+                )
+                logger.info(
+                    msg = f"Upsert string successful for user_id={user_id}",
+                    metadata = metadata
+                )
+                break
+        else:
+            error_msg = embedding_response.text
+            logger.error(
+                msg = f"Failed to vectorize input string for user_id={user_id}: \n{error_msg}"
+            )
+            raise ValueError(f"Failed to vectorize input string: \n\n{error_msg}")
+
+    def upsert_str_list(
+            self,
+            user_id: str,
+            chunks: List[str],
+            metadatas: List[Dict],
+    ) -> None:
+        """
+        Vectorizes a list of strings and upserts the resulting vectors into Qdrant.
+
+        This method performs the following steps:
+          - Validates that the number of input text chunks matches the number of metadata entries.
+          - Sends a request to the embedding service's list endpoint to obtain vector embeddings.
+          - Ensures that a Qdrant collection exists for the specified user.
+          - Upserts each vector along with its corresponding metadata into the user's Qdrant collection.
+
+        Retries the embedding request up to 5 times on failure before raising an error.
+
+        Args:
+            user_id (str): Unique identifier for the user; used to route data to the correct Qdrant collection.
+            chunks (List[str]): List of text strings to be vectorized.
+            metadatas (List[Dict]): List of metadata dictionaries, one for each input string.
+
+        Raises:
+            ValueError: If the number of chunks and metadata entries do not match.
+            ValueError: If the embedding service fails to return a successful response after 5 attempts.
+        """
+        if len(chunks) != len(metadatas):
+            raise ValueError("Length of chunks and metadatas must match.")
+        payload = {
+            "texts": chunks,
+        }
+        for _ in range(5):
+            embedding_response = self.session.post(
+                url = self.embed_list_address,
+                json = payload,
+                timeout = 10,
+            )
+            if embedding_response.status_code == 200:
+                response_json = embedding_response.json()
+                vectors = json.loads(response_json["vectorized texts"])
+                self.qdrant_handler.ensure_user_collection(user_id)
+                self.qdrant_handler.upsert_list_of_vectors(
+                    user_id = user_id,
+                    vectors = vectors,
+                    metadatas = metadatas,
+                )
+                logger.info(
+                    msg = f"Upsert list of strings successful for user_id={user_id}",
+                    metadata = metadatas
+                )
+                break
+        else:
+            error_msg = embedding_response.text
+            logger.error(
+                msg = f"Failed to vectorize input strings for user_id={user_id}: \n{error_msg}"
+            )
+            raise ValueError(f"Failed to vectorize input strings: \n\n{error_msg}")
+
+    def delete_doc(
+            self,
+            user_id: str,
+            doc_id: int,
+    ) -> None:
+        """
+        Delete all vector data associated with a specific document for a given user.
+
+        This method delegates the deletion to the underlying Qdrant handler and removes
+        all chunks stored under the specified document ID for the user.
+
+        Args:
+            user_id (str): The unique identifier for the user.
+            doc_id (int): The ID of the document to delete.
+        """
+        self.qdrant_handler.delete_doc(
+            user_id = user_id,
+            doc_id = doc_id,
+        )
+    
+    def delete_doc_by_title(
+            self,
+            user_id: str,
+            doc_title: str,
+    ) -> None:
+        """
+        Delete all vector data associated with a specific document title for a given user.
+
+        This method delegates the deletion to the underlying Qdrant handler and removes
+        all chunks stored under the specified document title for the user.
+
+        Args:
+            user_id (str): The unique identifier for the user.
+            doc_title (str): The title of the document to delete.
+        """
+        self.qdrant_handler.delete_doc_by_title(
+            user_id = user_id,
+            doc_title = doc_title,
+        )
+
+    def delete_chunk(
+            self,
+            user_id: str,
+            doc_id: int,
+            chunk_id: int,
+    ) -> None:
+        """
+        Delete a specific chunk of vector data for a given user and document.
+
+        This method delegates the deletion to the underlying Qdrant handler
+        and removes a single chunk identified by its chunk ID.
+
+        Args:
+            user_id (str): The unique identifier for the user.
+            doc_id (int): The ID of the document containing the chunk.
+            chunk_id (int): The ID of the chunk to delete.
+        """
+        self.qdrant_handler.delete_chunk(
+            user_id = user_id,
+            doc_id = doc_id,
+            chunk_id = chunk_id,
+        )
+
+    def delete_user_collection_data(
+            self,
+            user_id,
+    ) -> None:
+        """
+        Delete all vector data associated with a specific user.
+
+        This method delegates the deletion of the user's collection to the Qdrant handler.
+
+        Args:
+            user_id (str): The unique identifier for the user.
+        """
+        self.qdrant_handler.delete_user_collection_data(user_id=user_id)
+
+    def delete_user_collection(
+            self,
+            user_id: str,
+    ) -> None:
+        """
+        Delete the entire collection for a given user from Qdrant, including all data and metadata.
+
+        This permanently removes the user's collection and cannot be undone.
+
+        Args:
+            user_id (str): The unique identifier for the user.
+        """
+        self.qdrant_handler.delete_user_collection(user_id=user_id)
+
+    def update_chunk(
+            self,
+            user_id: str,
+            chunk: str,
+            doc_id: int,
+            chunk_id: int,
+    ) -> None:
+        """
+        Update an existing vector in Qdrant by re-vectorizing a new chunk of text.
+
+        This method sends the updated chunk to the embedding service, obtains a new vector,
+        and replaces the existing vector in Qdrant based on the given document and chunk IDs.
+
+        Args:
+            user_id (str): Unique user identifier.
+            chunk (str): The updated text to re-vectorize.
+            doc_id (int): ID of the document containing the chunk.
+            chunk_id (int): ID of the chunk to update within the document.
+
+        Raises:
+            ValueError: If vectorization fails after 5 attempts.
+        """
+        payload = {
+            "text": chunk,
+        }
+        for _ in range(5):
+            embedding_response = self.session.post(
+                url = self.embed_str_address,
+                json = payload,
+                timeout = 10,
+            )
+            if embedding_response.status_code == 200:
+                response_json = embedding_response.json()
+                vector = json.loads(response_json["vectorized text"])
+                self.qdrant_handler.update_vector(
+                    user_id = user_id,
+                    vector = vector,
+                    doc_id = doc_id,
+                    chunk_id = chunk_id,
+                )
+                break
+        else:
+            error_msg = embedding_response.text
+            raise ValueError(f"Failed to vectorize input string: \n\n{error_msg}")
+        
+    def search_query(
+            self,
+            user_id: str,
+            string_query: str,
+            limit: int = 5,
+            score_threshold: float = 0,
+    ) -> List[Dict[str, Any]]:
+        """
+        Vectorizes a query string and searches for similar vectors in Qdrant.
+
+        This method sends the query to the embedding service, retrieves the vector,
+        and performs a similarity search in Qdrant using that vector.
+
+        Args:
+            user_id (str): Identifier for the user's Qdrant collection.
+            string_query (str): Text input to vectorize and search with.
+            limit (int): Max number of results to return (default 5).
+            score_threshold (float): Minimum similarity score for results (default 0).
+
+        Returns:
+            List[Dict]: A list of matched chunks with document and score metadata.
+        
+        Raises:
+            ValueError: If the embedding service fails after 5 retries.
+        """
+        payload = {
+            "text": string_query,
+        }
+        for _ in range(5):
+            embedding_response = self.session.post(
+                url = self.embed_str_address,
+                json = payload,
+                timeout = 10,
+            )
+            if embedding_response.status_code == 200:
+                response_json = embedding_response.json()
+                vector = json.loads(response_json["vectorized text"])
+                query_response = self.qdrant_handler.search_query(
+                    user_id = user_id,
+                    vector_query = vector,
+                    limit = limit,
+                    score_threshold = score_threshold,
+                )
+                logger.info(
+                    f"Search query successful for user_id={user_id}, results={len(query_response)}"
+                )
+                break
+        else:
+            error_msg = embedding_response.text
+            logger.error(
+                f"Failed to vectorize input query for user_id={user_id}:\n{error_msg}"
+            )
+            raise ValueError(f"Failed to vectorize input query: \n\n{error_msg}")
+        return [
+            {
+                "DocId": r.payload.get("DocId"),
+                "ChunkId": r.payload.get("ChunkId"),
+                "Title": r.payload.get("Title"),
+                "Similarity Score": r.score,
+            } for r in query_response
+        ]
+    
+    def search_query_on_doc(
+            self,
+            user_id: str,
+            doc_ids: List[int],
+            string_query: str,
+            limit: int = 5,
+            score_threshold: float = 0,
+    ) -> List[Dict[str, Any]]:
+        """
+        Vectorizes a query string and performs a similarity search within specific documents.
+
+        This method sends the query to the embedding service, retrieves the vector, and
+        performs a similarity search in Qdrant within the specified document IDs.
+
+        Args:
+            user_id (str): Identifier for the user's Qdrant collection.
+            doc_ids (List[int]): List of document IDs to constrain the search.
+            string_query (str): Text to vectorize and use as the search query.
+            limit (int): Maximum number of results to return. Defaults to 5.
+            score_threshold (float): Minimum similarity score for returned results.
+
+        Returns:
+            List[Dict]: List of matched chunks with document ID, chunk ID, title, and similarity score.
+
+        Raises:
+            ValueError: If the embedding service fails after 5 attempts.
+        """
+        payload = {
+            "text": string_query,
+        }
+        for _ in range(5):
+            embedding_response = self.session.post(
+                url = self.embed_str_address,
+                json = payload,
+                timeout = 10,
+            )
+            if embedding_response.status_code == 200:
+                response_json = embedding_response.json()
+                vector = json.loads(response_json["vectorized text"])
+                query_response = self.qdrant_handler.search_query_on_doc(
+                    user_id = user_id,
+                    doc_ids = doc_ids,
+                    vector_query = vector,
+                    limit = limit,
+                    score_threshold = score_threshold,
+                )
+                logger.info(
+                    f"Search query successful for user_id={user_id} on doc_ids={doc_ids}, results={len(query_response)}"
+                )
+                break
+        else:
+            error_msg = embedding_response.text
+            logger.error(
+                f"Failed to vectorize input query for user_id={user_id}:\n{error_msg}"
+            )
+            raise ValueError(f"Failed to vectorize input query: \n\n{error_msg}")
+        return [
+            {
+                "DocId": r.payload.get("DocId"),
+                "ChunkId": r.payload.get("ChunkId"),
+                "Title": r.payload.get("Title"),
+                "Similarity Score": r.score,
+            } for r in query_response
+        ]
+    
+    def scroll_user_collection(
+            self,
+            user_id: str,
+            limit: int,
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieve a limited number of vector records from a user's Qdrant collection.
+
+        This method scrolls through the user's collection and returns vector metadata
+        including document ID, chunk ID, and title. Useful for previewing or inspecting
+        existing data.
+
+        Args:
+            user_id (str): The unique identifier for the user.
+            limit (int): The maximum number of records to retrieve.
+
+        Returns:
+            List[Dict]: A list of dictionaries containing metadata for each vector.
+        """
+        records = self.qdrant_handler.scroll_collection(
+            user_id = user_id,
+            limit = limit,
+        )
+        return [
+            {
+                "DocId": r.payload.get("DocId"),
+                "ChunkId": r.payload.get("ChunkId"),
+                "Title": r.payload.get("Title"),
+            } for r in records
+        ]
+
+    def list_collections(self) -> list[str]:
+        """
+        Retrieve a list of all collection names currently stored in Qdrant.
+
+        This method delegates to the Qdrant handler and returns the names of all
+        collections, typically corresponding to individual users or datasets.
+
+        Returns:
+            list[str]: A list of collection names.
+        """
+        return self.qdrant_handler.list_collections()
+    
