@@ -6,10 +6,15 @@ from .schemas import (
     DeleteDocWithIdRequest,
     DeleteDocWithTitleRequest,
     DeleteChunkRequest,
+    DeleteByIdRequest,
+    DeleteListByIdRequest,
     DeleteUserCollectionRequest,
     UpdateRequest,
     QueryRequest,
     QueryOnDocRequest,
+    ScrollDocRequest,
+    ScrollChunkRequest,
+    ScrollDocsRequest,
     ScrollRequest,
 )
 from ..core.document_ingestor import DocumentProcessor
@@ -73,9 +78,9 @@ app = FastAPI(
     path = "/",
     tags = [
         "Upsert Processor",
-        "Delete Processor",
         "Query Processor",
         "List Processor",
+        "Delete Processor",
     ],
 )
 async def root():
@@ -282,6 +287,71 @@ async def delete_chunk(
         }
     )
 
+@app.delete(
+    path = "/delete_chunk_by_id/",
+    tags = [
+        "Delete Processor",
+    ],
+)
+async def delete_chunk_by_id(
+    request: DeleteByIdRequest
+):
+    """
+    Deletes a specific vector entry by its unique vector ID.
+
+    Args:
+        request (DeleteByIdRequest): A JSON body containing:
+            - user_id (str): The ID of the user.
+            - vector_id (str): The ID of the vector to be deleted.
+
+    Returns:
+        JSONResponse: Confirmation of successful deletion.
+    """
+    user_id = request.user_id
+    vector_id = request.vector_id
+    data_processor.delete_by_id(
+        user_id = user_id,
+        vector_id = vector_id,
+    )
+    return JSONResponse(
+        {
+            "Message": f"Document with VectorId={vector_id} was successfully deleted.",
+            "User-Id": user_id
+        }
+    )
+
+@app.delete(
+    path = "/delete_chunk_list_by_id/",
+    tags = [
+        "Delete Processor",
+    ],
+)
+async def delete_chunk_list_by_id(
+    request: DeleteListByIdRequest
+):
+    """
+    Deletes multiple vector entries by their unique vector IDs.
+
+    Args:
+        request (DeleteListByIdRequest): A JSON body containing:
+            - user_id (str): The ID of the user.
+            - vector_ids (List[str]): A list of vector IDs to be deleted.
+
+    Returns:
+        JSONResponse: Confirmation of successful deletion.
+    """
+    user_id = request.user_id
+    vector_ids = request.vector_ids
+    data_processor.delete_list_by_id(
+        user_id = user_id,
+        vector_ids = vector_ids,
+    )
+    return JSONResponse(
+        {
+            "Message": f"Document with VectorIds={vector_ids} were successfully deleted.",
+            "User-Id": user_id
+        }
+    )
 
 @app.delete(
     path = "/delete_user_collection_data/",
@@ -493,13 +563,126 @@ async def scroll_user_collection(
         limit (int, optional): Maximum number of records to return. Defaults to 20.
 
     Returns:
-        JSONResponse: A JSON object containing a list of chunked metadata and content up to the specified limit.
+        JSONResponse: A JSON object containing a list of chunked metadata and content
+        up to the specified limit.
     """
     user_id = request.user_id
     limit = request.limit
     results = data_processor.scroll_user_collection(
         user_id = user_id,
         limit = limit
+    )
+    return JSONResponse(
+        {
+            f"User {user_id} data": results
+        }
+    )
+
+@app.post(
+    path = "/scroll_user_doc/",
+    tags = [
+        "List Processor",
+    ],
+)
+async def scroll_user_doc(
+    request: ScrollDocRequest
+):
+    """
+    Retrieve a limited list of vector data chunks for a specific document from the
+    user's collection.
+
+    Args:
+        user_id (str): Unique identifier of the user.
+        doc_id (int): ID of the document to retrieve chunks from.
+        limit (int, optional): Maximum number of records to return. Defaults to 20.
+
+    Returns:
+        JSONResponse: A JSON object containing a list of chunked metadata and
+        content associated with the document.
+    """
+    user_id = request.user_id
+    doc_id = request.doc_id
+    limit = request.limit
+    results = data_processor.scroll_user_doc(
+        user_id = user_id,
+        doc_id = doc_id,
+        limit = limit,
+    )
+    return JSONResponse(
+        {
+            f"User {user_id} data": results
+        }
+    )
+
+@app.post(
+    path = "/scroll_user_chunk/",
+    tags = [
+        "List Processor",
+    ],
+)
+async def scroll_user_chunk(
+    request: ScrollChunkRequest
+):
+    """
+    Retrieve vector data for a specific chunk within a document from the user's collection.
+
+    Args:
+        user_id (str): Unique identifier of the user.
+        doc_id (int): ID of the document containing the chunk.
+        chunk_id (int): ID of the chunk to retrieve.
+        limit (int, optional): Maximum number of records to return. Defaults to 20.
+
+    Returns:
+        JSONResponse: A JSON object containing metadata and content of the specified chunk.
+    """
+    user_id = request.user_id
+    doc_id = request.doc_id
+    chunk_id = request.chunk_id
+    limit = request.limit
+    results = data_processor.scroll_user_chunk(
+        user_id = user_id,
+        doc_id = doc_id,
+        chunk_id = chunk_id,
+        limit = limit,
+    )
+    return JSONResponse(
+        {
+            f"User {user_id} data": results
+        }
+    )
+
+@app.post(
+    path = "/scroll_user_docs/",
+    tags = [
+        "List Processor",
+    ],
+)
+async def scroll_user_docs(
+    request: ScrollDocsRequest
+):
+    """
+    Retrieve a limited list of vector data chunks from specific
+    documents within a user's collection.
+
+    This endpoint allows filtering of vector records by a list of document
+    IDs and returns their associated metadata.
+
+    Args:
+        user_id (str): Unique identifier of the user.
+        doc_ids (List[int]): List of document IDs to retrieve data from.
+        limit (int, optional): Maximum number of records to return. Defaults to 20.
+
+    Returns:
+        JSONResponse: A JSON object containing a list of vector metadata and content
+        from the specified documents.
+    """
+    user_id = request.user_id
+    doc_ids = request.doc_ids
+    limit = request.limit
+    results = data_processor.scroll_user_docs(
+        user_id = user_id,
+        doc_ids = doc_ids,
+        limit = limit,
     )
     return JSONResponse(
         {
