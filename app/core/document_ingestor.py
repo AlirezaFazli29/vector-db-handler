@@ -7,6 +7,7 @@ from qdrant_client import QdrantClient
 from qdrant_client.models import (
     FieldCondition,
     VectorParams,
+    PointIdsList,
     PointStruct,
     MatchValue,
     Distance,
@@ -214,6 +215,48 @@ class QdrantHandler:
             points_selector = filter_condition,
         )
 
+    def delete_by_id(
+            self,
+            user_id: str,
+            vector_id: str,
+    ) -> None:
+        """
+        Delete a single vector point from the user's collection using its vector ID.
+
+        Args:
+            user_id (str): The user's unique identifier.
+            vector_id (str): The ID of the vector point to delete.
+        """
+        collection_name = self.__collection_name(user_id)
+        point = PointIdsList(
+            points = [vector_id],
+        )
+        self.client.delete(
+            collection_name = collection_name,
+            points_selector = point,
+        )
+
+    def delete_list_by_id(
+            self,
+            user_id: str,
+            vector_ids: List[str],
+    ) -> None:
+        """
+        Delete multiple vector points from the user's collection using a list of vector IDs.
+
+        Args:
+            user_id (str): The user's unique identifier.
+            vector_ids (List[str]): A list of vector point IDs to delete.
+        """
+        collection_name = self.__collection_name(user_id)
+        point = PointIdsList(
+            points = vector_ids,
+        )
+        self.client.delete(
+            collection_name = collection_name,
+            points_selector = point,
+        )
+
     def delete_user_collection_data(
             self,
             user_id,
@@ -392,6 +435,127 @@ class QdrantHandler:
         )
         return response[0]
     
+    def scroll_doc(
+            self,
+            user_id: str,
+            doc_id: int,
+            limit: int,
+            with_payload: bool = True,
+            with_vectors: bool = False,
+    ) -> List[Record]:
+        """
+        Scroll through the user's collection and retrieve a batch of records 
+        that match a specific DocId.
+
+        Args:
+            user_id (str): The user's unique identifier.
+            doc_id (int): The document ID to filter records by.
+            limit (int): Number of records to retrieve.
+            with_payload (bool, optional): Include payload in results. Defaults to True.
+            with_vectors (bool, optional): Include vector data in results. Defaults to False.
+
+        Returns:
+            List[Record]: List of records from the collection matching the given DocId.
+        """
+        collection_name = self.__collection_name(user_id)
+        filter_condition = Filter(
+            must=[
+                FieldCondition(key="DocId",  match=MatchValue(value=doc_id)),
+            ]
+        )
+        response = self.client.scroll(
+            collection_name = collection_name,
+            scroll_filter = filter_condition,
+            with_payload = with_payload,
+            with_vectors = with_vectors,
+            limit = limit,
+        )
+        return response[0]
+
+    def scroll_chunk(
+            self,
+            user_id: str,
+            doc_id: int,
+            chunk_id: int,
+            limit: int,
+            with_payload: bool = True,
+            with_vectors: bool = False,
+    ) -> List[Record]:
+        """
+        Scroll through the user's collection and retrieve a batch of records 
+        that match a specific DocId and ChunkId.
+
+        Args:
+            user_id (str): The user's unique identifier.
+            doc_id (int): The document ID to filter records by.
+            chunk_id (int): The chunk ID to filter records by.
+            limit (int): Number of records to retrieve.
+            with_payload (bool, optional): Include payload in results. Defaults to True.
+            with_vectors (bool, optional): Include vector data in results. Defaults to False.
+
+        Returns:
+            List[Record]: List of records from the collection matching the given DocId and ChunkId.
+        """
+        collection_name = self.__collection_name(user_id)
+        filter_condition = Filter(
+            must=[
+                FieldCondition(key="DocId",  match=MatchValue(value=doc_id)),
+                FieldCondition(key="ChunkId", match=MatchValue(value=chunk_id)),
+            ]
+        )
+        response = self.client.scroll(
+            collection_name = collection_name,
+            scroll_filter = filter_condition,
+            with_payload = with_payload,
+            with_vectors = with_vectors,
+            limit = limit,
+        )
+        return response[0]
+
+    def scroll_docs(
+            self,
+            user_id: str,
+            doc_ids: List[int],
+            limit: int,
+            with_payload: bool = True,
+            with_vectors: bool = False,
+    ) -> List[Record]:
+        """
+        Scroll through the user's collection and retrieve a batch of records 
+        that match any of the specified DocIds.
+
+        If `doc_ids` is an empty list, the `should` filter will match everything, 
+        effectively returning results as if there were no filter — similar to a 
+        normal scroll over the entire collection.
+
+        Args:
+            user_id (str): The user's unique identifier.
+            doc_ids (List[int]): List of document IDs to filter records by.
+            limit (int): Number of records to retrieve.
+            with_payload (bool, optional): Include payload in results. Defaults to True.
+            with_vectors (bool, optional): Include vector data in results. Defaults to False.
+
+        Returns:
+            List[Record]: List of records from the collection matching the given DocIds,
+                        or all records if `doc_ids` is empty.
+        """
+        collection_name = self.__collection_name(user_id)
+        f = [
+            FieldCondition(
+                key = "DocId",
+                match = MatchValue(value=i)
+            ) for i in doc_ids
+        ]
+        filter_condition = Filter(should=f)
+        response = self.client.scroll(
+            collection_name = collection_name,
+            scroll_filter = filter_condition,
+            with_payload = with_payload,
+            with_vectors = with_vectors,
+            limit = limit,
+        )
+        return response[0]
+
     def list_collections(self) -> list[str]:
         """
         Get the names of every collection that currently exists in Qdrant.
@@ -629,6 +793,46 @@ class DocumentProcessor:
             chunk_id = chunk_id,
         )
 
+    def delete_by_id(
+            self,
+            user_id: str,
+            vector_id: str,
+    ) -> None:
+        """
+        Delete a single vector entry by its unique vector ID.
+
+        This method removes a specific vector from the user's collection
+        using its unique vector identifier.
+
+        Args:
+            user_id (str): The unique identifier for the user.
+            vector_id (str): The ID of the vector to delete.
+        """
+        self.qdrant_handler.delete_by_id(
+            user_id = user_id,
+            vector_id = vector_id
+        )
+
+    def delete_list_by_id(
+            self,
+            user_id: str,
+            vector_ids: List[str],
+    ) -> None:
+        """
+        Delete multiple vector entries by their vector IDs.
+
+        This method removes a list of vectors from the user's collection
+        using their unique vector identifiers.
+
+        Args:
+            user_id (str): The unique identifier for the user.
+            vector_ids (List[str]): A list of vector IDs to delete.
+        """
+        self.qdrant_handler.delete_list_by_id(
+            user_id = user_id,
+            vector_ids = vector_ids
+        )
+
     def delete_user_collection_data(
             self,
             user_id,
@@ -697,9 +901,19 @@ class DocumentProcessor:
                     doc_id = doc_id,
                     chunk_id = chunk_id,
                 )
+                logger.info(
+                    msg = f"Updating string successful for user_id={user_id}",
+                    metadata = {
+                        "DocID": doc_id,
+                        "ChunkID": chunk_id,
+                    }
+                )
                 break
         else:
             error_msg = embedding_response.text
+            logger.error(
+                msg = f"Failed to vectorize input string for user_id={user_id}: \n{error_msg}"
+            )
             raise ValueError(f"Failed to vectorize input string: \n\n{error_msg}")
         
     def search_query(
@@ -857,6 +1071,114 @@ class DocumentProcessor:
                 "DocId": r.payload.get("DocId"),
                 "ChunkId": r.payload.get("ChunkId"),
                 "Title": r.payload.get("Title"),
+            } for r in records
+        ]
+
+    def scroll_user_doc(
+            self,
+            user_id: str,
+            doc_id: int,
+            limit: int,
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieve a limited number of vector records from a specific document in a user's Qdrant collection.
+
+        This method scrolls through a given document within the user's collection and returns
+        metadata for each vector, including document ID, chunk ID, title, and vector ID.
+        Useful for inspecting the structure or contents of a particular document.
+
+        Args:
+            user_id (str): The unique identifier for the user.
+            doc_id (int): The document ID to filter records by.
+            limit (int): The maximum number of records to retrieve.
+
+        Returns:
+            List[Dict]: A list of dictionaries containing metadata and vector ID for each matching vector.
+        """
+        records = self.qdrant_handler.scroll_doc(
+            user_id = user_id,
+            doc_id = doc_id,
+            limit = limit,
+        )
+        return [
+            {
+                "DocId": r.payload.get("DocId"),
+                "ChunkId": r.payload.get("ChunkId"),
+                "Title": r.payload.get("Title"),
+                "VectorId": r.id,
+            } for r in records
+        ]
+    
+    def scroll_user_chunk(
+            self,
+            user_id: str,
+            doc_id: int,
+            chunk_id: int,
+            limit: int,
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieve vector records for a specific chunk within a document from a user's Qdrant collection.
+
+        This method scrolls through a given chunk identified by document ID and chunk ID
+        within the user's collection and returns associated metadata and vector IDs.
+        Useful for locating and inspecting specific sections of a document.
+
+        Args:
+            user_id (str): The unique identifier for the user.
+            doc_id (int): The document ID to filter records by.
+            chunk_id (int): The chunk ID within the document to retrieve.
+            limit (int): The maximum number of records to retrieve.
+
+        Returns:
+            List[Dict]: A list of dictionaries containing document ID, chunk ID, title, and vector ID.
+        """
+        records = self.qdrant_handler.scroll_chunk(
+            user_id = user_id,
+            doc_id = doc_id,
+            chunk_id = chunk_id,
+            limit = limit,
+        )
+        return [
+            {
+                "DocId": r.payload.get("DocId"),
+                "ChunkId": r.payload.get("ChunkId"),
+                "Title": r.payload.get("Title"),
+                "VectorId": r.id,
+            } for r in records
+        ]
+    
+    def scroll_user_docs(
+            self,
+            user_id: str,
+            doc_ids: List[int],
+            limit: int,
+    ) -> List[Dict[str, Any]]:
+        """
+        Retrieve vector records for one or more documents from a user's Qdrant collection.
+
+        This method scrolls through specified document IDs within the user's collection
+        and returns metadata and vector IDs. If an empty list is provided for `doc_ids`,
+        it will return a general scroll result without filtering by document.
+
+        Args:
+            user_id (str): The unique identifier for the user.
+            doc_ids (List[int]): List of document IDs to filter records by. Can be empty.
+            limit (int): The maximum number of records to retrieve.
+
+        Returns:
+            List[Dict]: A list of dictionaries containing document ID, chunk ID, title, and vector ID.
+        """
+        records = self.qdrant_handler.scroll_docs(
+            user_id = user_id,
+            doc_ids = doc_ids,
+            limit = limit,
+        )
+        return [
+            {
+                "DocId": r.payload.get("DocId"),
+                "ChunkId": r.payload.get("ChunkId"),
+                "Title": r.payload.get("Title"),
+                "VectorId": r.id,
             } for r in records
         ]
 
