@@ -9,11 +9,14 @@
 │   │   ├── config.py
 │   │   └── document_ingestor.py
 │   └── main.py
+├── qdrant_storage
+│   └── ...
 ├── .dockerignore
 ├── .gitignore
 ├── dev.ipynb
 ├── docker-compose.yml
 ├── Dockerfile
+├── pip.conf
 ├── README.md
 ├── requirements.txt
 └── structure.txt
