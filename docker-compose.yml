@@ -1,0 +1,29 @@
+services:
+
+  vector-db-handler:
+    container_name: vector-db-handler
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: vector-db-handler:dev
+    ports:
+      - "${DB_HANDLER_PORT:-7070}:8080"
+    environment:
+      ENV: prod
+      QDRANT_HOST: qdrant
+      QDRANT_PORT: 6333
+      EMBEDDING_HOST: ${EMBEDDING_HOST:-192.168.52.62}
+      EMBEDDING_PORT: ${EMBEDDING_PORT:-7001}
+    depends_on:
+      - qdrant 
+    restart: unless-stopped
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    container_name: qdrant
+    volumes:
+      - ./qdrant_storage:/qdrant/storage
+    restart: unless-stopped
+
+volumes:
+  qdrant_storage:
